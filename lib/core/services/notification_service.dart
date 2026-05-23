@@ -19,7 +19,7 @@ class NotificationService {
 
     if (!Platform.isWindows && !Platform.isLinux) {
       try {
-        timeZoneName = await FlutterTimezone.getLocalTimezone();
+        timeZoneName = (await FlutterTimezone.getLocalTimezone()) as String;
         debugPrint('✅ Timezone: $timeZoneName');
       } catch (e) {
         debugPrint('⚠️ Timezone error: $e');

@@ -22,6 +22,12 @@ class AlarmModel extends HiveObject {
   @HiveField(5)
   String label;
 
+  @HiveField(6)
+  String difficulty;
+
+  @HiveField(7)
+  int mathQuestions;
+
   AlarmModel({
     required this.id,
     required this.hour,
@@ -29,5 +35,7 @@ class AlarmModel extends HiveObject {
     required this.repeatDays,
     required this.enabled,
     required this.label,
+    this.difficulty = 'MEDIUM',
+    this.mathQuestions = 2,
   });
 }

@@ -17,8 +17,9 @@ class AlarmRepositoryImpl implements AlarmRepository {
       repeatDays: alarm.repeatDays,
       enabled: alarm.enabled,
       label: alarm.label,
+      difficulty: alarm.difficulty,
+      mathQuestions: alarm.mathQuestions,
     );
-
     await datasource.addAlarm(model);
   }
 
@@ -30,7 +31,6 @@ class AlarmRepositoryImpl implements AlarmRepository {
   @override
   Future<List<AlarmEntity>> getAlarms() async {
     final alarms = datasource.getAlarms();
-
     return alarms
         .map(
           (e) => AlarmEntity(
@@ -40,6 +40,8 @@ class AlarmRepositoryImpl implements AlarmRepository {
             repeatDays: e.repeatDays,
             enabled: e.enabled,
             label: e.label,
+            difficulty: e.difficulty,
+            mathQuestions: e.mathQuestions,
           ),
         )
         .toList();

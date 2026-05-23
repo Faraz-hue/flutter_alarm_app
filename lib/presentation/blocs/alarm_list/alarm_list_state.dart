@@ -1,4 +1,5 @@
-// ignore: file_names
+// ignore_for_file: file_names
+
 import 'package:alarm_app/domain/entities/alarm_entity.dart';
 
 abstract class AlarmListState {}

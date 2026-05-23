@@ -5,6 +5,8 @@ class AlarmEntity {
   final List<int> repeatDays;
   final bool enabled;
   final String label;
+  final String difficulty; // 'EASY' | 'MEDIUM' | 'HARD'
+  final int mathQuestions; // 1 – 5
 
   AlarmEntity({
     required this.id,
@@ -13,5 +15,7 @@ class AlarmEntity {
     required this.repeatDays,
     required this.enabled,
     required this.label,
+    this.difficulty = 'MEDIUM',
+    this.mathQuestions = 2,
   });
 }

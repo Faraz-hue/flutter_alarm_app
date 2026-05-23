@@ -17,22 +17,30 @@ class AppRouter {
       GoRoute(
         path: '/ringing',
         builder: (context, state) {
-          final alarmId = state.extra as String?;
-          return RingingPage(alarmId: alarmId ?? '');
+          final alarmId = state.extra as String? ?? '';
+          return RingingPage(alarmId: alarmId);
         },
       ),
       GoRoute(
         path: '/math-challenge',
         builder: (context, state) {
-          final alarmId = state.extra as String?;
-          return MathChallengePage(alarmId: alarmId ?? '');
+          // extra is either a String (legacy) or a Map with alarmId/difficulty/mathQuestions
+          final extra = state.extra;
+          if (extra is Map) {
+            return MathChallengePage(
+              alarmId: extra['alarmId'] as String? ?? '',
+              difficulty: extra['difficulty'] as String? ?? 'MEDIUM',
+              mathQuestions: extra['mathQuestions'] as int? ?? 2,
+            );
+          }
+          return MathChallengePage(alarmId: extra as String? ?? '');
         },
       ),
       GoRoute(
         path: '/scanner',
         builder: (context, state) {
-          final alarmId = state.extra as String?;
-          return ScannerPage(alarmId: alarmId ?? '');
+          final alarmId = state.extra as String? ?? '';
+          return ScannerPage(alarmId: alarmId);
         },
       ),
       GoRoute(
