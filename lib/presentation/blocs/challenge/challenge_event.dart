@@ -6,10 +6,9 @@ abstract class ChallengeEvent extends Equatable {
   List<Object?> get props => [];
 }
 
-/// Start challenge with chosen difficulty and question count (from alarm settings)
 class StartChallenge extends ChallengeEvent {
-  final String difficulty; // 'EASY' | 'MEDIUM' | 'HARD'
-  final int totalQuestions; // 1-5
+  final String difficulty;
+  final int totalQuestions;
 
   const StartChallenge({this.difficulty = 'MEDIUM', this.totalQuestions = 2});
 
@@ -24,27 +23,13 @@ class SubmitMathAnswer extends ChallengeEvent {
   List<Object?> get props => [answer];
 }
 
-/// User uploaded an image — bytes + mimeType for Anthropic Vision
-class SubmitImageForVerification extends ChallengeEvent {
-  final List<int> imageBytes;
-  final String mimeType; // 'image/jpeg' | 'image/png'
-  final String imagePath; // local path to delete after verification
-
-  const SubmitImageForVerification({
-    required this.imageBytes,
-    required this.mimeType,
-    required this.imagePath,
-  });
-
+/// ML Kit detected labels from the live camera frame
+class LabelsDetected extends ChallengeEvent {
+  final List<String> labels;
+  const LabelsDetected(this.labels);
   @override
-  List<Object?> get props => [mimeType, imagePath];
+  List<Object?> get props => [labels];
 }
 
-/// Internal: Anthropic confirmed the object
-class ImageVerified extends ChallengeEvent {
-  final bool success;
-  final String message;
-  const ImageVerified({required this.success, required this.message});
-  @override
-  List<Object?> get props => [success, message];
-}
+/// User confirmed object (desktop fallback / debug)
+class ObjectConfirmed extends ChallengeEvent {}

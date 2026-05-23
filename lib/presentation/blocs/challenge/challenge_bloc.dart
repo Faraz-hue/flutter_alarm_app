@@ -1,10 +1,5 @@
-import 'dart:convert';
-import 'dart:io';
 import 'dart:math';
-import 'package:flutter/foundation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'package:http/http.dart' as http;
 import 'challenge_event.dart';
 import 'challenge_state.dart';
 
@@ -15,25 +10,40 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
   int _totalQuestions = 2;
   int _currentQuestion = 0;
 
-  static const _objects = [
+  // Objects ML Kit Image Labeling reliably detects
+  // These are actual ML Kit label strings (lowercase)
+  static const _objectPool = [
     'toothbrush',
     'soap',
-    'toothpaste tube',
     'towel',
-    'shampoo bottle',
-    'water tap',
     'mirror',
     'comb',
+    'bottle', // shampoo/conditioner bottle
+    'tap', // water tap / faucet
+    'sink',
   ];
+
+  // Maps our target → ML Kit label keywords to match against
+  // ML Kit returns labels like "Toothbrush", "Personal care", "Soap", etc.
+  static const Map<String, List<String>> _labelKeywords = {
+    'toothbrush': ['toothbrush', 'tooth brush', 'dental', 'oral care'],
+    'soap': ['soap', 'bar soap', 'personal care', 'hygiene'],
+    'towel': ['towel', 'textile', 'linens', 'cloth'],
+    'mirror': ['mirror', 'glass', 'reflection'],
+    'comb': ['comb', 'hair', 'brush', 'hairbrush'],
+    'bottle': ['bottle', 'shampoo', 'conditioner', 'liquid'],
+    'tap': ['tap', 'faucet', 'sink', 'plumbing', 'water'],
+    'sink': ['sink', 'basin', 'plumbing', 'tap', 'faucet'],
+  };
 
   ChallengeBloc() : super(ChallengeInitial()) {
     on<StartChallenge>(_onStart);
     on<SubmitMathAnswer>(_onSubmitMath);
-    on<SubmitImageForVerification>(_onSubmitImage);
-    on<ImageVerified>(_onImageVerified);
+    on<LabelsDetected>(_onLabelsDetected);
+    on<ObjectConfirmed>(_onObjectConfirmed);
   }
 
-  // ── StartChallenge ────────────────────────────────────────────────────────
+  // ── Start ─────────────────────────────────────────────────────────────────
 
   void _onStart(StartChallenge event, Emitter<ChallengeState> emit) {
     _difficulty = event.difficulty;
@@ -42,7 +52,7 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
     _emitNextQuestion(emit);
   }
 
-  // ── Math answer ───────────────────────────────────────────────────────────
+  // ── Math ──────────────────────────────────────────────────────────────────
 
   void _onSubmitMath(SubmitMathAnswer event, Emitter<ChallengeState> emit) {
     final s = state;
@@ -57,61 +67,40 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
     if ((userAnswer - s.correctAnswer).abs() < 0.01) {
       if (_currentQuestion >= _totalQuestions) {
         emit(MathChallengeSuccess());
-        _emitImageChallenge(emit);
+        _emitObjectChallenge(emit);
       } else {
         _emitNextQuestion(emit);
       }
     } else {
-      emit(s.copyWith(error: 'Wrong answer! Try again.'));
+      emit(s.copyWith(error: 'Wrong! Try again.'));
     }
   }
 
-  // ── Image verification ────────────────────────────────────────────────────
+  // ── ML Kit label stream ───────────────────────────────────────────────────
 
-  Future<void> _onSubmitImage(
-    SubmitImageForVerification event,
-    Emitter<ChallengeState> emit,
-  ) async {
+  void _onLabelsDetected(LabelsDetected event, Emitter<ChallengeState> emit) {
     final s = state;
-    if (s is! ImageVerificationInProgress) return;
+    if (s is! ObjectDetectionInProgress) return;
 
-    emit(s.copyWith(isVerifying: true, errorMessage: null));
+    // Always update the UI with what's currently visible
+    emit(
+      s.copyWith(
+        detectedLabels: event.labels,
+        statusMessage: _buildStatusMessage(event.labels, s.targetObject),
+      ),
+    );
 
-    try {
-      final result = await _verifyWithGemini(
-        imageBytes: event.imageBytes,
-        mimeType: event.mimeType,
-        targetObject: s.targetObject,
-      );
-
-      _deleteTempFile(event.imagePath);
-      add(ImageVerified(success: result.success, message: result.message));
-    } catch (e) {
-      debugPrint('❌ Verification error: $e');
-      _deleteTempFile(event.imagePath);
-      add(
-        ImageVerified(
-          success: false,
-          message: 'Verification failed. Please try again.',
-        ),
-      );
-    }
-  }
-
-  void _onImageVerified(ImageVerified event, Emitter<ChallengeState> emit) {
-    final s = state;
-    if (s is! ImageVerificationInProgress) return;
-
-    if (event.success) {
+    // Check for a match
+    if (_isMatch(event.labels, s.targetObject)) {
       emit(ChallengeCompleted());
-    } else {
-      emit(
-        ImageVerificationInProgress(
-          targetObject: s.targetObject,
-          isVerifying: false,
-          errorMessage: event.message,
-        ),
-      );
+    }
+  }
+
+  // ── Desktop / debug confirm ───────────────────────────────────────────────
+
+  void _onObjectConfirmed(ObjectConfirmed event, Emitter<ChallengeState> emit) {
+    if (state is ObjectDetectionInProgress) {
+      emit(ChallengeCompleted());
     }
   }
 
@@ -131,23 +120,37 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
     );
   }
 
-  void _emitImageChallenge(Emitter<ChallengeState> emit) {
-    final target = _objects[_random.nextInt(_objects.length)];
-    emit(ImageVerificationInProgress(targetObject: target));
+  void _emitObjectChallenge(Emitter<ChallengeState> emit) {
+    final target = _objectPool[_random.nextInt(_objectPool.length)];
+    emit(ObjectDetectionInProgress(targetObject: target));
   }
 
-  void _deleteTempFile(String path) {
-    try {
-      final f = File(path);
-      f.exists().then((exists) {
-        if (exists) {
-          f.delete();
-          debugPrint('🗑️ Deleted temp image: $path');
-        }
-      });
-    } catch (e) {
-      debugPrint('⚠️ Could not delete temp file: $e');
+  /// Match detected ML Kit labels against our target keywords
+  bool _isMatch(List<String> detectedLabels, String targetObject) {
+    final keywords = _labelKeywords[targetObject] ?? [targetObject];
+    for (final detected in detectedLabels) {
+      final lower = detected.toLowerCase();
+      for (final keyword in keywords) {
+        if (lower.contains(keyword)) return true;
+      }
     }
+    return false;
+  }
+
+  String _buildStatusMessage(List<String> labels, String target) {
+    if (labels.isEmpty) return 'Point camera at the $target...';
+    final keywords = _labelKeywords[target] ?? [target];
+    // Check if any detected label is even close
+    for (final label in labels) {
+      for (final kw in keywords) {
+        if (label.toLowerCase().contains(kw)) {
+          return '✅ $target detected!';
+        }
+      }
+    }
+    // Show what it sees so user knows camera is working
+    final topLabels = labels.take(2).join(', ');
+    return 'Seeing: $topLabels\nLooking for $target...';
   }
 
   (String, double) _buildProblem(String difficulty) {
@@ -167,123 +170,5 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
         final b = _random.nextInt(10) + 2;
         return ('$a × $b', (a * b).toDouble());
     }
-  }
-
-  // ── Gemini Vision API (FREE) ──────────────────────────────────────────────
-
-  Future<({bool success, String message})> _verifyWithGemini({
-    required List<int> imageBytes,
-    required String mimeType,
-    required String targetObject,
-  }) async {
-    final apiKey = dotenv.maybeGet('GEMINI_API_KEY') ?? '';
-    if (apiKey.isEmpty) {
-      throw Exception(
-        'GEMINI_API_KEY not found in .env file.\n'
-        'Get a free key at aistudio.google.com',
-      );
-    }
-
-    final base64Image = base64Encode(imageBytes);
-
-    // Gemini 1.5 Flash — free, fast, great at object detection
-    const model = 'gemini-1.5-flash';
-    final url =
-        'https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent?key=$apiKey';
-
-    final prompt =
-        '''
-You are verifying that a user photographed the correct object to stop their alarm.
-Required object: "$targetObject"
-
-Look at the image and determine if "$targetObject" is clearly visible.
-
-Be LENIENT:
-- Partial visibility is fine
-- Any angle, any lighting, just woke up quality is fine
-- Any brand counts (Lux, Dove, etc. all count as "soap")
-- Toothbrush with toothpaste on it counts as "toothbrush"
-- Blurry or dark photos are okay if the object is identifiable
-
-Respond with ONLY this JSON (no markdown, no extra text):
-{"found": true, "confidence": 0.95, "message": "Toothbrush clearly visible!"}
-or
-{"found": false, "confidence": 0.1, "message": "No toothbrush found. Please photograph your toothbrush."}
-''';
-
-    final requestBody = jsonEncode({
-      'contents': [
-        {
-          'parts': [
-            {
-              'inline_data': {'mime_type': mimeType, 'data': base64Image},
-            },
-            {'text': prompt},
-          ],
-        },
-      ],
-      'generationConfig': {
-        'temperature': 0.1, // low temperature = consistent answers
-        'maxOutputTokens': 150,
-        'responseMimeType': 'application/json', // force JSON output
-      },
-    });
-
-    debugPrint('🤖 Sending image to Gemini Vision for: "$targetObject"');
-
-    final response = await http
-        .post(
-          Uri.parse(url),
-          headers: {'Content-Type': 'application/json'},
-          body: requestBody,
-        )
-        .timeout(const Duration(seconds: 30));
-
-    debugPrint('📡 Gemini response status: ${response.statusCode}');
-
-    if (response.statusCode != 200) {
-      debugPrint('❌ Gemini API error ${response.statusCode}: ${response.body}');
-      throw Exception('Gemini API error ${response.statusCode}');
-    }
-
-    final decoded = jsonDecode(response.body) as Map<String, dynamic>;
-
-    // Extract text from Gemini response structure
-    final candidates = decoded['candidates'] as List<dynamic>? ?? [];
-    if (candidates.isEmpty) {
-      throw Exception('No response from Gemini');
-    }
-
-    final parts = (candidates[0]['content']?['parts'] as List<dynamic>?) ?? [];
-    final rawText = parts
-        .whereType<Map>()
-        .where((p) => p['text'] != null)
-        .map((p) => p['text'] as String)
-        .join('');
-
-    debugPrint('🤖 Gemini raw response: $rawText');
-
-    // Clean and parse JSON
-    final cleaned = rawText
-        .replaceAll(RegExp(r'```json\s*'), '')
-        .replaceAll(RegExp(r'```\s*'), '')
-        .trim();
-
-    // Find the JSON object
-    final jsonMatch = RegExp(r'\{.*\}', dotAll: true).firstMatch(cleaned);
-    if (jsonMatch == null) {
-      debugPrint('❌ Cannot parse JSON from: $cleaned');
-      throw Exception('Unexpected response format');
-    }
-
-    final json = jsonDecode(jsonMatch.group(0)!) as Map<String, dynamic>;
-    final found = json['found'] as bool? ?? false;
-    final confidence = (json['confidence'] as num?)?.toDouble() ?? 0.0;
-    final message = json['message'] as String? ?? '';
-
-    debugPrint('✅ Result: found=$found, confidence=$confidence, msg=$message');
-
-    // 0.60 threshold — lenient for just-woke-up photos
-    return (success: found && confidence >= 0.60, message: message);
   }
 }

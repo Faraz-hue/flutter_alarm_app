@@ -1,24 +1,9 @@
-// ignore_for_file: use_build_context_synchronously
-
 import 'package:alarm_app/presentation/blocs/challenge/challenge_bloc.dart';
 import 'package:alarm_app/presentation/blocs/challenge/challenge_event.dart';
 import 'package:alarm_app/presentation/blocs/challenge/challenge_state.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
-
-/// Extra passed via GoRouter: map with alarmId, difficulty, mathQuestions
-class MathChallengeArgs {
-  final String alarmId;
-  final String difficulty;
-  final int mathQuestions;
-
-  const MathChallengeArgs({
-    required this.alarmId,
-    required this.difficulty,
-    required this.mathQuestions,
-  });
-}
 
 class MathChallengePage extends StatefulWidget {
   final String alarmId;
@@ -44,7 +29,6 @@ class _MathChallengePageState extends State<MathChallengePage> {
   @override
   void initState() {
     super.initState();
-    // Always restart from the correct settings
     context.read<ChallengeBloc>().add(
       StartChallenge(
         difficulty: widget.difficulty,
@@ -86,17 +70,17 @@ class _MathChallengePageState extends State<MathChallengePage> {
         ),
         body: BlocConsumer<ChallengeBloc, ChallengeState>(
           listener: (context, state) {
+            // Navigate to scanner when math is done
             if (state is MathChallengeSuccess && !_navigating) {
               _navigating = true;
-              // Navigate to scanner (image challenge)
               Future.delayed(const Duration(milliseconds: 500), () {
                 if (mounted) {
                   context.pushReplacement('/scanner', extra: widget.alarmId);
                 }
               });
             }
-            // In case bloc skips straight to ImageVerificationInProgress
-            if (state is ImageVerificationInProgress && !_navigating) {
+            // Also handle if bloc jumps straight to ObjectDetectionInProgress
+            if (state is ObjectDetectionInProgress && !_navigating) {
               _navigating = true;
               Future.delayed(const Duration(milliseconds: 300), () {
                 if (mounted) {
@@ -126,11 +110,10 @@ class _MathChallengePageState extends State<MathChallengePage> {
       padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
       child: Column(
         children: [
-          // ── Step indicator ──────────────────────────────────────────
           _stepRow(step: 1),
           const SizedBox(height: 24),
 
-          // ── Question progress ───────────────────────────────────────
+          // Difficulty badge + question counter
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -161,7 +144,7 @@ class _MathChallengePageState extends State<MathChallengePage> {
           ),
           const SizedBox(height: 12),
 
-          // Question dots
+          // Progress dots
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: List.generate(state.totalQuestions, (i) {
@@ -191,7 +174,7 @@ class _MathChallengePageState extends State<MathChallengePage> {
           ),
           const SizedBox(height: 16),
 
-          // ── Problem box ─────────────────────────────────────────────
+          // Problem box
           Container(
             width: double.infinity,
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
@@ -216,7 +199,7 @@ class _MathChallengePageState extends State<MathChallengePage> {
           ),
           const SizedBox(height: 28),
 
-          // ── Answer input ────────────────────────────────────────────
+          // Answer input
           TextField(
             controller: _ctrl,
             focusNode: _focus,
@@ -258,7 +241,7 @@ class _MathChallengePageState extends State<MathChallengePage> {
           ),
           const SizedBox(height: 24),
 
-          // ── Submit ──────────────────────────────────────────────────
+          // Submit button
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
@@ -312,18 +295,14 @@ class _MathChallengePageState extends State<MathChallengePage> {
     );
   }
 
-  // ── Shared widgets ──────────────────────────────────────────────────────
-
-  Widget _stepRow({required int step}) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        _stepDot(1, 'Math', step == 1),
-        _stepLine(),
-        _stepDot(2, 'Photo', step == 2),
-      ],
-    );
-  }
+  Widget _stepRow({required int step}) => Row(
+    mainAxisAlignment: MainAxisAlignment.center,
+    children: [
+      _stepDot(1, 'Math', step == 1),
+      _stepLine(),
+      _stepDot(2, 'Scan', step == 2),
+    ],
+  );
 
   Widget _stepDot(int n, String label, bool active) => Column(
     children: [

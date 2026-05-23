@@ -8,12 +8,11 @@ abstract class ChallengeState extends Equatable {
 
 class ChallengeInitial extends ChallengeState {}
 
-/// Solving one of N math questions
 class MathChallengeInProgress extends ChallengeState {
   final String problem;
   final double correctAnswer;
   final String difficulty;
-  final int currentQuestion; // 1-based
+  final int currentQuestion;
   final int totalQuestions;
   final String? error;
 
@@ -46,35 +45,33 @@ class MathChallengeInProgress extends ChallengeState {
   ];
 }
 
-/// All math questions solved — brief success flash
 class MathChallengeSuccess extends ChallengeState {}
 
-/// Waiting for user to take + upload a photo
-class ImageVerificationInProgress extends ChallengeState {
+/// Live camera scanning — ML Kit Image Labeling
+class ObjectDetectionInProgress extends ChallengeState {
   final String targetObject;
-  final bool isVerifying; // true while API call is running
-  final String? errorMessage; // set when API says wrong object
+  final List<String> detectedLabels; // what ML Kit currently sees
+  final String? statusMessage;
 
-  const ImageVerificationInProgress({
+  const ObjectDetectionInProgress({
     required this.targetObject,
-    this.isVerifying = false,
-    this.errorMessage,
+    this.detectedLabels = const [],
+    this.statusMessage,
   });
 
-  ImageVerificationInProgress copyWith({
-    bool? isVerifying,
-    String? errorMessage,
-  }) => ImageVerificationInProgress(
+  ObjectDetectionInProgress copyWith({
+    List<String>? detectedLabels,
+    String? statusMessage,
+  }) => ObjectDetectionInProgress(
     targetObject: targetObject,
-    isVerifying: isVerifying ?? this.isVerifying,
-    errorMessage: errorMessage,
+    detectedLabels: detectedLabels ?? this.detectedLabels,
+    statusMessage: statusMessage ?? this.statusMessage,
   );
 
   @override
-  List<Object?> get props => [targetObject, isVerifying, errorMessage];
+  List<Object?> get props => [targetObject, detectedLabels, statusMessage];
 }
 
-/// Everything done — alarm can be stopped
 class ChallengeCompleted extends ChallengeState {}
 
 class ChallengeFailure extends ChallengeState {
